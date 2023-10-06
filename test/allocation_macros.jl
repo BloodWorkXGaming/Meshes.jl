@@ -2,36 +2,43 @@
 # https://forem.julialang.org/dpinol/detecting-test-allocated-gotchas-34op
 
 macro testnoallocations(expressions...)
+    if length(expressions) == 0
+        throw("testnoallocations requires an expression to test")
+    end
+
+    exprs = expressions
+    run_twice = true
+    if length(expressions) >= 2 && (expressions[1] == :onlyonce || expressions[1] == :noprecompile)
+        run_twice = false
+        exprs = expressions[2:end]
+    end
+
     # Uncomment the following line if non-const globals should be prohibited
-    _failIfNonConstGlobalsInExpressions(__module__, expressions...)
+    _fail_if_non_const_globals_in_expressions(__module__, expressions...)
     return esc(
         quote
-            !@isCalledFromFunction() &&
+            if (!@is_called_from_function())
                 @warn "Since not called from a function @allocated could be imprecise"
+                display(stacktrace())
+            end
             
+            if !iscompileenabled()
+                @warn "Allocations measures are not precise because executed with --compile=min"
+            end
+
             # Executes the code twice to exclude the allocation cost of the first call
-            $(expressions...)
-            @test (@allocated $(expressions...)) === 0
+            if $run_twice
+                $(exprs...)
+            end
+            @test (@allocated $(exprs...)) === 0
         end
     )
 end
 
-macro testnoallocations_noprecompile(expressions...)
-    # Uncomment the following line if non-const globals should be prohibited
-    _failIfNonConstGlobalsInExpressions(__module__, expressions...)
-    return esc(
-        quote
-            !@isCalledFromFunction() &&
-                @warn "Since not called from a function @allocated could be imprecise"
-            @test (@allocated $(expressions...)) === 0
-        end
-    )
-end
-
-macro isCalledFromFunction()
+macro is_called_from_function()
     expr = esc(:(
         try
-            currentFunctionName = nameof(var"#self#")
+            current_function_name = nameof(var"#self#")
             true
         catch
             false
@@ -40,15 +47,15 @@ macro isCalledFromFunction()
     return expr
 end
 
-function _failIfNonConstGlobalsInExpressions(mod::Module, expressions...)
+function _fail_if_non_const_globals_in_expressions(mod::Module, expressions...)
     for e in expressions
-        nonConstGlobals = (
+        non_const_globals = (
             arg for arg in expressionsymbols(e) if isdefined(mod, arg) && !isconst(mod, arg)
         )
-        if !isempty(nonConstGlobals)
+        if !isempty(non_const_globals)
             error(
                 "testnoallocations called with expression containing non const global symbols $(collect(
-            nonConstGlobals
+            non_const_globals
         ))",
             )
         end
@@ -62,3 +69,6 @@ function expressionsymbols(e::Union{Expr, Symbol, Number})
     subExpressions = (expressionsymbols(arg) for arg in e.args if isa(arg, Expr))
     return (topSymbols..., Iterators.flatten(subExpressions)...)
 end
+
+
+iscompileenabled() = Base.JLOptions().compile_enabled == 1

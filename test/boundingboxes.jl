@@ -1,5 +1,5 @@
 @testset "Bounding boxes" begin
-  function bounding_box_tests()
+  # function bounding_box_tests()
     p = P2(0, 0)
     @test boundingbox(p) == Box(p, p)
     @testnoallocations boundingbox(p)
@@ -71,7 +71,7 @@
     m = convert(SimpleMesh, g)
     @test boundingbox(m) == Box(P2(0, 0), P2(10, 10))
     @testnoallocations boundingbox(m)
-  end
+  # end
 
-  bounding_box_tests()
+  # bounding_box_tests()
 end
